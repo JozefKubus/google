@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Odoo Google Feed Reader</title>
+    <style>
+        :root {
+            --primary: #714B67; /* Odoo fialová farba */
+            --primary-hover: #5c3d54;
+            --bg: #f8f9fa;
+            --border: #dee2e6;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        h1 {
+            color: var(--primary);
+            margin-top: 0;
+        }
+        .control-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            background: #f1f3f5;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .input-group {
+            flex-grow: 1;
+            display: flex;
+            gap: 10px;
+        }
+        input[type="url"] {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+        button:disabled {
+            background-color: #a894a3;
+            cursor: not-allowed;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        /* Debug sekcia */
+        #debugSection {
+            display: none;
+            margin-bottom: 20px;
+        }
+        #debugSection textarea {
+            width: 100%;
+            height: 300px;
+            font-family: monospace;
+            background: #2b2b2b;
+            color: #a9b7c6;
+            padding: 15px;
+            border-radius: 6px;
+            border: none;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+
+        /* Produkty */
+        #status {
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .error { color: #dc3545; }
+        .success { color: #28a745; }
+        .loading { color: #0056b3; }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+        }
+        .product-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            background: #fff;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+        .product-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+        }
+        .product-img {
+            width: 100%;
+            height: 180px;
+            object-fit: contain;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .product-id {
+            font-size: 11px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        .product-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin: 0 0 10px 0;
+            line-height: 1.4;
+            flex-grow: 1;
+        }
+        .product-title a {
+            color: #333;
+            text-decoration: none;
+        }
+        .product-title a:hover {
+            color: var(--primary);
+            text-decoration: underline;
+        }
+        .product-price {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e63946;
+            margin-top: auto;
+        }
+        .no-image {
+            width: 100%;
+            height: 180px;
+            background: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #adb5bd;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Odoo Google Feed Reader</h1>
+    
+    <div class="control-panel">
+        <div class="input-group">
+            <input type="url" id="feedUrl" value="https://www.bezanex.sk/product_data/feed-caf7.xml?access_token=5fe29f38-ecab-4e19-a1a9-70e09393c045" placeholder="Zadaj URL XML feedu...">
+            <button id="loadBtn" onclick="loadFeed()">Načítať feed</button>
+			<button id="downloadBtn" onclick="downloadFeed()" style="background-color: #28a745;">Stiahnuť XML</button>
+        </div>
+        <label class="checkbox-group">
+            <input type="checkbox" id="debugMode" onchange="toggleDebug()"> 
+            Debug mód (zobraziť XML)
+        </label>
+        <label class="checkbox-group" title="Použi ak máš problém s CORS blockovaním na strane Odoo servera">
+            <input type="checkbox" id="useProxy" checked> 
+            CORS Proxy
+        </label>
+    </div>
+
+    <div id="status"></div>
+
+    <div id="debugSection">
+        <textarea id="xmlOutput" readonly placeholder="Tu sa zobrazí surové XML..."></textarea>
+    </div>
+
+    <div class="products-grid" id="productsGrid"></div>
+</div>
+
+<script>
+    function toggleDebug() {
+        const debugSection = document.getElementById('debugSection');
+        const isChecked = document.getElementById('debugMode').checked;
+        debugSection.style.display = isChecked ? 'block' : 'none';
+    }
+
+    async function loadFeed() {
+        const urlInput = document.getElementById('feedUrl').value.trim();
+        const useProxy = document.getElementById('useProxy').checked;
+        const statusEl = document.getElementById('status');
+        const btn = document.getElementById('loadBtn');
+        const xmlOutput = document.getElementById('xmlOutput');
+        const productsGrid = document.getElementById('productsGrid');
+
+        if (!urlInput) {
+            statusEl.innerHTML = '<span class="error">Zadaj prosím URL adresu feedu.</span>';
+            return;
+        }
+
+        // Reset UI
+        btn.disabled = true;
+        statusEl.innerHTML = '<span class="loading">Načítavam a parsujem dáta...</span>';
+        xmlOutput.value = '';
+        productsGrid.innerHTML = '';
+
+        // Riešenie CORS: Ak prehliadač blokuje priamy fetch, použijeme proxy
+        const fetchUrl = useProxy 
+            ? `https://api.allorigins.win/raw?url=${encodeURIComponent(urlInput)}` 
+            : urlInput;
+
+        try {
+            const response = await fetch(fetchUrl);
+            
+            if (!response.ok) {
+                throw new Error(`Chyba pri načítavaní: ${response.status} ${response.statusText}`);
+            }
+
+            const xmlText = await response.text();
+            
+            // Zápis do debug okna
+            xmlOutput.value = xmlText;
+
+            // Parsovanie XML
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+
+            // Kontrola chýb pri parsovaní XML
+            const parseError = xmlDoc.getElementsByTagName("parsererror");
+            if (parseError.length > 0) {
+                throw new Error("Chyba pri parsovaní XML štruktúry. Pravdepodobne to nie je validné XML.");
+            }
+
+            renderProducts(xmlDoc);
+            
+            const itemCount = xmlDoc.querySelectorAll("item").length;
+            statusEl.innerHTML = `<span class="success">Úspešne načítaných ${itemCount} produktov.</span>`;
+
+        } catch (error) {
+            console.error(error);
+            statusEl.innerHTML = `<span class="error">Chyba: ${error.message}</span>`;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // Funkcia pre vytiahnutie hodnoty tagu (podporuje namespaces ako g:price, g:image_link)
+    function getTagValue(item, tagName, namespaceName) {
+        // Skúsime nájsť s menným priestorom
+        let elements = item.getElementsByTagName(namespaceName);
+        if (elements.length > 0) return elements[0].textContent;
+        
+        // Ak nenájde, skúsime bez prefixu
+        elements = item.getElementsByTagName(tagName);
+        if (elements.length > 0) return elements[0].textContent;
+        
+        return null;
+    }
+
+    function renderProducts(xmlDoc) {
+        const productsGrid = document.getElementById('productsGrid');
+        const items = xmlDoc.querySelectorAll("item");
+
+        items.forEach(item => {
+            // Google Feed štandardne používa g: prefix
+            const id = getTagValue(item, 'id', 'g:id') || 'Bez ID';
+            const title = getTagValue(item, 'title', 'title') || 'Neznámy produkt';
+            const link = getTagValue(item, 'link', 'link') || '#';
+            const price = getTagValue(item, 'price', 'g:price') || '';
+            const imageLink = getTagValue(item, 'image_link', 'g:image_link');
+
+            // Vytvorenie HTML karty
+            const card = document.createElement('div');
+            card.className = 'product-card';
+
+            let imageHtml = imageLink 
+                ? `<img src="${imageLink}" alt="${title}" class="product-img" onerror="this.outerHTML='<div class=\\'no-image\\'>Chyba obrázku</div>'">`
+                : `<div class="no-image">Bez obrázku</div>`;
+
+            card.innerHTML = `
+                ${imageHtml}
+                <div class="product-id">ID: ${id}</div>
+                <h3 class="product-title">
+                    <a href="${link}" target="_blank">${title}</a>
+                </h3>
+                <div class="product-price">${price}</div>
+            `;
+
+            productsGrid.appendChild(card);
+        });
+    }
+	
+	async function downloadFeed() {
+    const urlInput = document.getElementById('feedUrl').value.trim();
+    const useProxy = document.getElementById('useProxy').checked;
+    const statusEl = document.getElementById('status');
+
+    if (!urlInput) {
+        statusEl.innerHTML = '<span class="error">Zadaj prosím URL adresu feedu.</span>';
+        return;
+    }
+
+    statusEl.innerHTML = '<span class="loading">Sťahujem súbor...</span>';
+
+    const fetchUrl = useProxy 
+        //? `https://api.allorigins.win/raw?url=${encodeURIComponent(urlInput)}` 
+		? `https://corsproxy.io/?url=${encodeURIComponent(urlInput)}`
+        : urlInput;
+
+    try {
+        // Stiahnutie dát
+        const response = await fetch(fetchUrl);
+        if (!response.ok) throw new Error(`Chyba: ${response.status}`);
+        
+        const xmlText = await response.text();
+        
+        // Vytvorenie virtuálneho súboru (Blob)
+        const blob = new Blob([xmlText], { type: 'text/xml' });
+        const url = window.URL.createObjectURL(blob);
+        
+        // Vytvorenie neviditeľného linku a vyvolanie kliknutia
+        const a = document.createElement('a');
+        a.href = url;
+        // Extrahovanie názvu súboru z URL alebo použitie predvoleného
+        const filename = urlInput.split('/').pop().split('?')[0] || 'odoo_feed.xml';
+        a.download = filename; 
+        
+        document.body.appendChild(a);
+        a.click();
+        
+        // Upratanie pamäte
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        statusEl.innerHTML = `<span class="success">Súbor <b>${filename}</b> sa sťahuje.</span>`;
+    } catch (error) {
+        console.error(error);
+        statusEl.innerHTML = `<span class="error">Chyba pri sťahovaní: ${error.message}</span>`;
+    }
+}
+</script>
+
+</body>
+</html>
