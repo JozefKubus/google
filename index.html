@@ -324,8 +324,8 @@
     statusEl.innerHTML = '<span class="loading">Sťahujem súbor...</span>';
 
     const fetchUrl = useProxy 
-        //? `https://api.allorigins.win/raw?url=${encodeURIComponent(urlInput)}` 
-		? `https://corsproxy.io/?url=${encodeURIComponent(urlInput)}`
+        ? `https://api.allorigins.win/raw?url=${encodeURIComponent(urlInput)}` 
+		//? `https://corsproxy.io/?url=${encodeURIComponent(urlInput)}`
         : urlInput;
 
     try {
